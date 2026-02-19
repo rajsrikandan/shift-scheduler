@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scheduler</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0f0f1a;
+      --surface:      #1a1a2e;
+      --header-bg:    #16213e;
+      --border:       #2a2a4a;
+      --text:         #e8e8f0;
+      --muted:        #7a7a9a;
+      --cat-work:     #6c63ff;
+      --cat-personal: #ff6584;
+      --cat-health:   #43e97b;
+      --cat-other:    #f7971e;
+      --pri-high:     #ff4757;
+      --pri-medium:   #ffa502;
+      --pri-low:      #2ed573;
+      --accent:       #6c63ff;
+      --slot-hover:   rgba(108,99,255,0.12);
+      --today-tint:   rgba(108,99,255,0.07);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    #app-header {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    #nav-controls { display: flex; gap: 6px; }
+
+    .btn {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: #252540; border-color: var(--accent); }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #7c73ff; border-color: #7c73ff; }
+
+    .btn-task {
+      background: #ff6584;
+      border-color: #ff6584;
+      color: #fff;
+    }
+    .btn-task:hover { background: #ff7a96; border-color: #ff7a96; }
+
+    #week-label {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    #header-actions { display: flex; gap: 8px; }
+
+    /* ── APP BODY ── */
+    #app-body {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── CALENDAR ── */
+    #calendar-area {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+
+    #day-headers {
+      display: grid;
+      grid-template-columns: 56px repeat(7, 1fr);
+      border-bottom: 2px solid var(--border);
+      background: var(--header-bg);
+      flex-shrink: 0;
+    }
+
+    .day-header-gutter { /* empty top-left cell */ }
+
+    .day-header {
+      padding: 10px 6px;
+      text-align: center;
+      border-left: 1px solid var(--border);
+    }
+
+    .day-header .day-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .day-header .day-num {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+
+    .day-header.today .day-num {
+      background: var(--accent);
+      color: #fff;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 2px auto 0;
+      font-size: 18px;
+    }
+
+    #grid-scroll-container {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    #time-gutter {
+      background: var(--header-bg);
+      border-right: 1px solid var(--border);
+      position: sticky;
+      left: 0;
+      z-index: 2;
+    }
+
+    .time-label {
+      height: 60px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      padding: 4px 8px 0 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    #day-columns {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      position: relative;
+    }
+
+    .day-column {
+      position: relative;
+      border-left: 1px solid var(--border);
+    }
+
+    .day-column.today { background: var(--today-tint); }
+
+    .time-slot {
+      height: 60px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .time-slot:hover { background: var(--slot-hover); }
+
+    /* ── APPOINTMENT BLOCKS ── */
+    .appointment-block {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      overflow: hidden;
+      cursor: pointer;
+      border-left: 3px solid rgba(255,255,255,0.35);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      transition: filter 0.15s, transform 0.1s;
+      z-index: 1;
+    }
+
+    .appointment-block:hover { filter: brightness(1.18); transform: translateX(1px); }
+
+    .appointment-block.cat-work     { background: var(--cat-work); }
+    .appointment-block.cat-personal { background: var(--cat-personal); }
+    .appointment-block.cat-health   { background: var(--cat-health); color: #0f1a12; }
+    .appointment-block.cat-other    { background: var(--cat-other); color: #1a1000; }
+
+    .appt-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .appt-time  { font-size: 10px; opacity: 0.85; margin-top: 1px; }
+
+    /* ── CURRENT TIME LINE ── */
+    .current-time-line {
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: #ff4757;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .current-time-line::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      top: -4px;
+      width: 10px;
+      height: 10px;
+      background: #ff4757;
+      border-radius: 50%;
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #sidebar h2 {
+      font-size: 15px;
+      font-weight: 700;
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #task-filter-bar {
+      display: flex;
+      gap: 6px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .filter-btn {
+      background: var(--header-bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .filter-btn:hover { color: var(--text); border-color: var(--accent); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .filter-btn[data-priority="high"].active   { background: var(--pri-high);   border-color: var(--pri-high); }
+    .filter-btn[data-priority="medium"].active { background: var(--pri-medium); border-color: var(--pri-medium); color: #1a0f00; }
+    .filter-btn[data-priority="low"].active    { background: var(--pri-low);    border-color: var(--pri-low); color: #0a1f0f; }
+
+    #task-list {
+      list-style: none;
+      overflow-y: auto;
+      flex: 1;
+      padding: 10px;
+    }
+
+    .task-item {
+      border-left: 4px solid;
+      border-radius: 0 8px 8px 0;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--header-bg);
+      cursor: pointer;
+      transition: transform 0.1s, filter 0.1s;
+      user-select: none;
+    }
+
+    .task-item:hover { transform: translateX(2px); filter: brightness(1.1); }
+
+    .task-item.pri-high   { border-color: var(--pri-high); }
+    .task-item.pri-medium { border-color: var(--pri-medium); }
+    .task-item.pri-low    { border-color: var(--pri-low); }
+
+    .task-item.completed { opacity: 0.45; }
+    .task-item.completed .task-title { text-decoration: line-through; }
+
+    .task-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .task-check {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    .task-title {
+      flex: 1;
+      font-weight: 600;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-priority-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.1);
+      flex-shrink: 0;
+    }
+
+    .task-due {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+      padding-left: 24px;
+    }
+
+    .task-empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 32px 16px;
+      font-style: italic;
+    }
+
+    /* ── MODAL ── */
+    #modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    #modal-overlay.hidden { display: none; }
+
+    #modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 440px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.7);
+      position: relative;
+    }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-8px); }
+      40%      { transform: translateX(8px); }
+      60%      { transform: translateX(-6px); }
+      80%      { transform: translateX(6px); }
+    }
+
+    #modal-box.shake { animation: shake 0.35s ease; }
+
+    #modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      cursor: pointer;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    #modal-close:hover { background: var(--border); color: var(--text); }
+
+    #modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-right: 32px;
+    }
+
+    .form-field { margin-bottom: 16px; }
+
+    .form-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .form-field input[type="text"],
+    .form-field input[type="date"],
+    .form-field input[type="time"],
+    .form-field select,
+    .form-field textarea {
+      width: 100%;
+      background: var(--header-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.15s;
+      outline: none;
+    }
+
+    .form-field input:focus,
+    .form-field select:focus,
+    .form-field textarea:focus { border-color: var(--accent); }
+
+    .form-field textarea { resize: vertical; min-height: 72px; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .swatch-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .swatch-option { display: none; }
+
+    .swatch-label {
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      border: 2px solid transparent;
+      transition: transform 0.1s, border-color 0.15s;
+      user-select: none;
+    }
+
+    .swatch-label:hover { transform: scale(1.05); }
+
+    .swatch-option:checked + .swatch-label {
+      border-color: #fff;
+      transform: scale(1.05);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.2);
+    }
+
+    .swatch-work     { background: var(--cat-work); color: #fff; }
+    .swatch-personal { background: var(--cat-personal); color: #fff; }
+    .swatch-health   { background: var(--cat-health); color: #0f1a12; }
+    .swatch-other    { background: var(--cat-other); color: #1a1000; }
+    .swatch-high     { background: var(--pri-high); color: #fff; }
+    .swatch-medium   { background: var(--pri-medium); color: #1a1000; }
+    .swatch-low      { background: var(--pri-low); color: #0a1f0f; }
+
+    #modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    #btn-delete {
+      background: rgba(255,71,87,0.15);
+      color: var(--pri-high);
+      border: 1px solid rgba(255,71,87,0.4);
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      margin-right: auto;
+      transition: background 0.15s;
+    }
+
+    #btn-delete:hover { background: rgba(255,71,87,0.3); }
+    #btn-delete.hidden { display: none; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* ── ERROR TOAST ── */
+    #error-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(120%);
+      background: var(--pri-high);
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      transition: transform 0.3s ease;
+      z-index: 2000;
+      white-space: nowrap;
+    }
+    #error-toast.visible { transform: translateX(-50%) translateY(0); }
+
+    /* date/time input color fix for webkit */
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="time"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.7);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header id="app-header">
+    <div id="nav-controls">
+      <button class="btn" id="btn-prev">&#8249; Prev</button>
+      <button class="btn" id="btn-today">Today</button>
+      <button class="btn" id="btn-next">Next &#8250;</button>
+    </div>
+    <span id="week-label"></span>
+    <div id="header-actions">
+      <button class="btn btn-primary" id="btn-new-appointment">+ Appointment</button>
+      <button class="btn btn-task" id="btn-new-task">+ Task</button>
+    </div>
+  </header>
+
+  <div id="app-body">
+    <main id="calendar-area">
+      <div id="day-headers">
+        <div class="day-header-gutter"></div>
+      </div>
+      <div id="grid-scroll-container">
+        <div id="time-gutter"></div>
+        <div id="day-columns"></div>
+      </div>
+    </main>
+
+    <aside id="sidebar">
+      <h2>Tasks</h2>
+      <div id="task-filter-bar">
+        <button class="filter-btn active" data-priority="all">All</button>
+        <button class="filter-btn" data-priority="high">High</button>
+        <button class="filter-btn" data-priority="medium">Medium</button>
+        <button class="filter-btn" data-priority="low">Low</button>
+      </div>
+      <ul id="task-list"></ul>
+    </aside>
+  </div>
+
+  <div id="error-toast"></div>
+
+  <div id="modal-overlay" class="hidden">
+    <div id="modal-box">
+      <button id="modal-close" title="Close">&#10005;</button>
+      <h2 id="modal-title"></h2>
+      <form id="modal-form" onsubmit="return false;"></form>
+      <div id="modal-actions">
+        <button id="btn-delete" class="hidden">Delete</button>
+        <button class="btn" id="btn-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── CONSTANTS ──────────────────────────────────────────────────────────────
+    const CONSTANTS = {
+      HOURS_START: 7,
+      HOURS_END:   21,
+      SLOT_HEIGHT: 60,
+      DAY_SHORT: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+      CATEGORIES: {
+        work:     { label: 'Work',     cls: 'swatch-work' },
+        personal: { label: 'Personal', cls: 'swatch-personal' },
+        health:   { label: 'Health',   cls: 'swatch-health' },
+        other:    { label: 'Other',    cls: 'swatch-other' },
+      },
+      PRIORITIES: {
+        high:   { label: 'High',   cls: 'swatch-high' },
+        medium: { label: 'Medium', cls: 'swatch-medium' },
+        low:    { label: 'Low',    cls: 'swatch-low' },
+      },
+    };
+
+    // ── API CLIENT ─────────────────────────────────────────────────────────────
+    const API_BASE = 'http://localhost:8080/api/v1';
+
+    const ApiClient = {
+      async _request(method, path, body) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        const res = await fetch(API_BASE + path, opts);
+        if (res.status === 204) return null;
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Request failed');
+        return json;
+      },
+      getAppointments()          { return this._request('GET',    '/appointments'); },
+      createAppointment(data)    { return this._request('POST',   '/appointments', data); },
+      updateAppointment(id, data){ return this._request('PUT',    `/appointments/${id}`, data); },
+      deleteAppointment(id)      { return this._request('DELETE', `/appointments/${id}`); },
+      getTasks()                 { return this._request('GET',    '/tasks'); },
+      createTask(data)           { return this._request('POST',   '/tasks', data); },
+      updateTask(id, data)       { return this._request('PUT',    `/tasks/${id}`, data); },
+      deleteTask(id)             { return this._request('DELETE', `/tasks/${id}`); },
+      toggleTask(id)             { return this._request('PATCH',  `/tasks/${id}/toggle`); },
+    };
+
+    // ── CALENDAR STATE ─────────────────────────────────────────────────────────
+    const CalendarState = {
+      weekStart: null,
+
+      init() { this.weekStart = this._mondayOf(new Date()); },
+
+      _mondayOf(date) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        const day = d.getDay();
+        d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+        return d;
+      },
+
+      prevWeek() { const d = new Date(this.weekStart); d.setDate(d.getDate() - 7); this.weekStart = d; },
+      nextWeek() { const d = new Date(this.weekStart); d.setDate(d.getDate() + 7); this.weekStart = d; },
+      today()    { this.weekStart = this._mondayOf(new Date()); },
+
+      getWeekDates() {
+        return Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(this.weekStart);
+          d.setDate(d.getDate() + i);
+          return d;
+        });
+      },
+
+      isToday(date) {
+        const t = new Date();
+        return date.getFullYear() === t.getFullYear() &&
+               date.getMonth()    === t.getMonth() &&
+               date.getDate()     === t.getDate();
+      },
+
+      toDateStr(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      },
+
+      weekLabel() {
+        const dates = this.getWeekDates();
+        const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `${fmt(dates[0])} \u2013 ${fmt(dates[6])}, ${dates[0].getFullYear()}`;
+      },
+    };
+
+    // ── APPOINTMENT MANAGER ────────────────────────────────────────────────────
+    const AppointmentManager = {
+      list: [],
+
+      async load() {
+        this.list = await ApiClient.getAppointments();
+      },
+
+      async create(fields) {
+        const payload = { ...fields, category: fields.category.toUpperCase() };
+        const created = await ApiClient.createAppointment(payload);
+        this.list.push(created);
+        return created;
+      },
+
+      async update(id, fields) {
+        const payload = { ...fields, category: fields.category.toUpperCase() };
+        const updated = await ApiClient.updateAppointment(id, payload);
+        const i = this.list.findIndex(a => a.id === id);
+        if (i !== -1) this.list[i] = updated;
+        return updated;
+      },
+
+      async delete(id) {
+        await ApiClient.deleteAppointment(id);
+        this.list = this.list.filter(a => a.id !== id);
+      },
+
+      byDate(dateStr) { return this.list.filter(a => a.date === dateStr); },
+
+      toPixels(startTime, duration) {
+        const [h, m] = startTime.split(':').map(Number);
+        const top = h * 60 + m - CONSTANTS.HOURS_START * 60;
+        return { top, height: Math.max(duration, 20) };
+      },
+    };
+
+    // ── TASK MANAGER ───────────────────────────────────────────────────────────
+    const TaskManager = {
+      list: [],
+
+      async load() {
+        this.list = await ApiClient.getTasks();
+      },
+
+      async create(fields) {
+        const payload = { ...fields, priority: fields.priority.toUpperCase(), dueDate: fields.dueDate || null };
+        const created = await ApiClient.createTask(payload);
+        this.list.push(created);
+        return created;
+      },
+
+      async update(id, fields) {
+        const payload = { ...fields, priority: fields.priority.toUpperCase(), dueDate: fields.dueDate || null };
+        const updated = await ApiClient.updateTask(id, payload);
+        const i = this.list.findIndex(t => t.id === id);
+        if (i !== -1) this.list[i] = updated;
+        return updated;
+      },
+
+      async delete(id) {
+        await ApiClient.deleteTask(id);
+        this.list = this.list.filter(t => t.id !== id);
+      },
+
+      async toggle(id) {
+        const updated = await ApiClient.toggleTask(id);
+        const i = this.list.findIndex(t => t.id === id);
+        if (i !== -1) this.list[i] = updated;
+      },
+
+      sorted(filterPriority) {
+        const w = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+        const upper = filterPriority ? filterPriority.toUpperCase() : null;
+        let arr = upper ? this.list.filter(t => t.priority === upper) : [...this.list];
+        return arr.sort((a, b) => {
+          if (a.completed !== b.completed) return a.completed ? 1 : -1;
+          return (w[a.priority] ?? 3) - (w[b.priority] ?? 3);
+        });
+      },
+    };
+
+    // ── MODAL CONTROLLER ───────────────────────────────────────────────────────
+    const ModalController = {
+      mode: null,
+      editId: null,
+
+      openNewAppt(prefill) { this.mode = 'appt'; this.editId = null; this._render(prefill || {}); this._show(); },
+      openEditAppt(a)      { this.mode = 'appt'; this.editId = a.id; this._render(a);            this._show(); },
+      openNewTask(prefill) { this.mode = 'task'; this.editId = null; this._render(prefill || {}); this._show(); },
+      openEditTask(t)      { this.mode = 'task'; this.editId = t.id; this._render(t);            this._show(); },
+
+      close() {
+        document.getElementById('modal-overlay').classList.add('hidden');
+        this.mode = null;
+        this.editId = null;
+      },
+
+      _show() { document.getElementById('modal-overlay').classList.remove('hidden'); },
+
+      _render(data) {
+        const isAppt = this.mode === 'appt';
+        const isEdit = !!this.editId;
+        document.getElementById('modal-title').textContent =
+          isAppt ? (isEdit ? 'Edit Appointment' : 'New Appointment')
+                 : (isEdit ? 'Edit Task'        : 'New Task');
+        document.getElementById('btn-delete').classList.toggle('hidden', !isEdit);
+        document.getElementById('modal-form').innerHTML = isAppt
+          ? this._apptFormHTML(data)
+          : this._taskFormHTML(data);
+      },
+
+      _apptFormHTML(d) {
+        const sel = (opt, val) => String(opt) === String(val) ? ' selected' : '';
+        const today = CalendarState.toDateStr(new Date());
+        return `
+          <div class="form-field">
+            <label>Title *</label>
+            <input id="f-title" type="text" placeholder="Appointment title" value="${_esc(d.title||'')}" autocomplete="off">
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Date *</label>
+              <input id="f-date" type="date" value="${_esc(d.date||today)}">
+            </div>
+            <div class="form-field">
+              <label>Start Time *</label>
+              <input id="f-time" type="time" value="${_esc(d.startTime||'09:00')}">
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Duration *</label>
+            <select id="f-dur">
+              <option value="15"${sel(15,d.duration)}>15 minutes</option>
+              <option value="30"${sel(30,d.duration)||(!d.duration?' selected':'')}>30 minutes</option>
+              <option value="45"${sel(45,d.duration)}>45 minutes</option>
+              <option value="60"${sel(60,d.duration)}>1 hour</option>
+              <option value="90"${sel(90,d.duration)}>1.5 hours</option>
+              <option value="120"${sel(120,d.duration)}>2 hours</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Category *</label>
+            <div class="swatch-group">${
+              Object.entries(CONSTANTS.CATEGORIES).map(([k,c]) => `
+                <input type="radio" name="cat" id="cat-${k}" class="swatch-option" value="${k}"${(d.category||'').toLowerCase()===k?' checked':''}>
+                <label for="cat-${k}" class="swatch-label ${c.cls}">${c.label}</label>
+              `).join('')
+            }</div>
+          </div>
+          <div class="form-field">
+            <label>Notes</label>
+            <textarea id="f-notes" placeholder="Optional notes...">${_esc(d.notes||'')}</textarea>
+          </div>
+        `;
+      },
+
+      _taskFormHTML(d) {
+        return `
+          <div class="form-field">
+            <label>Title *</label>
+            <input id="f-title" type="text" placeholder="Task title" value="${_esc(d.title||'')}" autocomplete="off">
+          </div>
+          <div class="form-field">
+            <label>Due Date</label>
+            <input id="f-due" type="date" value="${_esc(d.dueDate||'')}">
+          </div>
+          <div class="form-field">
+            <label>Priority *</label>
+            <div class="swatch-group">${
+              Object.entries(CONSTANTS.PRIORITIES).map(([k,c]) => `
+                <input type="radio" name="pri" id="pri-${k}" class="swatch-option" value="${k}"${(d.priority||'').toLowerCase()===k?' checked':''}>
+                <label for="pri-${k}" class="swatch-label ${c.cls}">${c.label}</label>
+              `).join('')
+            }</div>
+          </div>
+          <div class="form-field">
+            <label>Notes</label>
+            <textarea id="f-notes" placeholder="Optional notes...">${_esc(d.notes||'')}</textarea>
+          </div>
+        `;
+      },
+
+      collect() {
+        if (this.mode === 'appt') {
+          const title     = document.getElementById('f-title')?.value.trim();
+          const date      = document.getElementById('f-date')?.value;
+          const startTime = document.getElementById('f-time')?.value;
+          const duration  = parseInt(document.getElementById('f-dur')?.value, 10);
+          const category  = document.querySelector('input[name="cat"]:checked')?.value;
+          const notes     = document.getElementById('f-notes')?.value.trim();
+          if (!title || !date || !startTime || !duration || !category) return null;
+          return { title, date, startTime, duration, category, notes: notes || '' };
+        } else {
+          const title    = document.getElementById('f-title')?.value.trim();
+          const dueDate  = document.getElementById('f-due')?.value;
+          const priority = document.querySelector('input[name="pri"]:checked')?.value;
+          const notes    = document.getElementById('f-notes')?.value.trim();
+          if (!title || !priority) return null;
+          return { title, dueDate: dueDate || '', priority, notes: notes || '' };
+        }
+      },
+    };
+
+    // ── UI RENDERER ────────────────────────────────────────────────────────────
+    const UIRenderer = {
+      _gutterBuilt: false,
+
+      renderAll() {
+        this._renderWeekLabel();
+        this._renderDayHeaders();
+        this._renderTimeGutter();
+        this._renderDayColumns();
+        this.renderTaskList(EventBus._filter);
+        this._updateTimeLine();
+      },
+
+      _renderWeekLabel() {
+        document.getElementById('week-label').textContent = CalendarState.weekLabel();
+      },
+
+      _renderDayHeaders() {
+        const container = document.getElementById('day-headers');
+        container.querySelectorAll('.day-header').forEach(el => el.remove());
+        CalendarState.getWeekDates().forEach((date, i) => {
+          const div = document.createElement('div');
+          div.className = 'day-header' + (CalendarState.isToday(date) ? ' today' : '');
+          div.innerHTML = `<div class="day-name">${CONSTANTS.DAY_SHORT[i]}</div><div class="day-num">${date.getDate()}</div>`;
+          container.appendChild(div);
+        });
+      },
+
+      _renderTimeGutter() {
+        if (this._gutterBuilt) return;
+        this._gutterBuilt = true;
+        const gutter = document.getElementById('time-gutter');
+        for (let h = CONSTANTS.HOURS_START; h < CONSTANTS.HOURS_END; h++) {
+          const div = document.createElement('div');
+          div.className = 'time-label';
+          const period = h >= 12 ? 'PM' : 'AM';
+          const hour   = h > 12 ? h - 12 : (h === 12 ? 12 : h);
+          div.textContent = `${hour} ${period}`;
+          gutter.appendChild(div);
+        }
+      },
+
+      _renderDayColumns() {
+        const container = document.getElementById('day-columns');
+        container.innerHTML = '';
+        CalendarState.getWeekDates().forEach(date => container.appendChild(this._buildDayCol(date)));
+      },
+
+      _buildDayCol(date) {
+        const dateStr = CalendarState.toDateStr(date);
+        const col = document.createElement('div');
+        col.className = 'day-column' + (CalendarState.isToday(date) ? ' today' : '');
+        col.dataset.date = dateStr;
+
+        const totalHours = CONSTANTS.HOURS_END - CONSTANTS.HOURS_START;
+        for (let i = 0; i < totalHours; i++) {
+          const slot = document.createElement('div');
+          slot.className = 'time-slot';
+          slot.dataset.hour = CONSTANTS.HOURS_START + i;
+          col.appendChild(slot);
+        }
+
+        AppointmentManager.byDate(dateStr).forEach(appt => col.appendChild(this._buildApptBlock(appt)));
+        return col;
+      },
+
+      _buildApptBlock(appt) {
+        const { top, height } = AppointmentManager.toPixels(appt.startTime, appt.duration);
+        const block = document.createElement('div');
+        block.className = `appointment-block cat-${appt.category.toLowerCase()}`;
+        block.dataset.id = appt.id;
+        block.style.top    = `${top}px`;
+        block.style.height = `${height}px`;
+        const endTime = _addMinutes(appt.startTime, appt.duration);
+        block.innerHTML = `
+          <div class="appt-title">${_esc(appt.title)}</div>
+          <div class="appt-time">${_fmtTime(appt.startTime)} \u2013 ${_fmtTime(endTime)}</div>
+        `;
+        return block;
+      },
+
+      renderTaskList(filterPriority) {
+        const list = document.getElementById('task-list');
+        list.innerHTML = '';
+        const tasks = TaskManager.sorted(filterPriority);
+        if (!tasks.length) {
+          list.innerHTML = '<li class="task-empty">No tasks yet.<br>Click &ldquo;+ Task&rdquo; to add one.</li>';
+          return;
+        }
+        tasks.forEach(t => list.appendChild(this._buildTaskItem(t)));
+      },
+
+      _buildTaskItem(t) {
+        const li = document.createElement('li');
+        const priLower = (t.priority || '').toLowerCase();
+        li.className = `task-item pri-${priLower}${t.completed ? ' completed' : ''}`;
+        li.dataset.id = t.id;
+        const due = t.dueDate ? `<span class="task-due">Due: ${_fmtDate(t.dueDate)}</span>` : '';
+        li.innerHTML = `
+          <div class="task-row">
+            <input type="checkbox" class="task-check"${t.completed ? ' checked' : ''}>
+            <span class="task-title">${_esc(t.title)}</span>
+            <span class="task-priority-badge">${priLower}</span>
+          </div>${due}
+        `;
+        return li;
+      },
+
+      _updateTimeLine() {
+        document.querySelectorAll('.current-time-line').forEach(el => el.remove());
+        const todayCol = document.querySelector('.day-column.today');
+        if (!todayCol) return;
+        const now = new Date();
+        const minutes   = now.getHours() * 60 + now.getMinutes();
+        const gridStart = CONSTANTS.HOURS_START * 60;
+        const gridEnd   = CONSTANTS.HOURS_END   * 60;
+        if (minutes < gridStart || minutes > gridEnd) return;
+        const line = document.createElement('div');
+        line.className = 'current-time-line';
+        line.style.top = `${minutes - gridStart}px`;
+        todayCol.appendChild(line);
+      },
+    };
+
+    // ── EVENT BUS ──────────────────────────────────────────────────────────────
+    const EventBus = {
+      _filter: null,
+
+      init() {
+        document.getElementById('btn-prev').addEventListener('click', () => {
+          CalendarState.prevWeek(); UIRenderer.renderAll();
+        });
+        document.getElementById('btn-next').addEventListener('click', () => {
+          CalendarState.nextWeek(); UIRenderer.renderAll();
+        });
+        document.getElementById('btn-today').addEventListener('click', () => {
+          CalendarState.today(); UIRenderer.renderAll();
+        });
+
+        document.getElementById('btn-new-appointment').addEventListener('click', () => {
+          ModalController.openNewAppt();
+        });
+        document.getElementById('btn-new-task').addEventListener('click', () => {
+          ModalController.openNewTask();
+        });
+
+        document.getElementById('modal-close').addEventListener('click', () => ModalController.close());
+        document.getElementById('btn-cancel').addEventListener('click', () => ModalController.close());
+        document.getElementById('modal-overlay').addEventListener('click', e => {
+          if (e.target === document.getElementById('modal-overlay')) ModalController.close();
+        });
+
+        document.getElementById('btn-save').addEventListener('click', () => this._save());
+        document.getElementById('btn-delete').addEventListener('click', () => this._delete());
+
+        document.getElementById('day-columns').addEventListener('click', e => {
+          const block = e.target.closest('.appointment-block');
+          const slot  = e.target.closest('.time-slot');
+          if (block) {
+            const appt = AppointmentManager.list.find(a => a.id === block.dataset.id);
+            if (appt) ModalController.openEditAppt(appt);
+          } else if (slot) {
+            const col  = slot.closest('.day-column');
+            const hour = String(parseInt(slot.dataset.hour)).padStart(2, '0');
+            ModalController.openNewAppt({ date: col.dataset.date, startTime: `${hour}:00` });
+          }
+        });
+
+        document.getElementById('task-list').addEventListener('click', async e => {
+          const check = e.target.closest('.task-check');
+          const item  = e.target.closest('.task-item');
+          if (!item) return;
+          if (check) {
+            e.stopPropagation();
+            try {
+              await TaskManager.toggle(item.dataset.id);
+              UIRenderer.renderTaskList(this._filter);
+            } catch (err) {
+              _showError(err.message || 'Failed to update task.');
+            }
+          } else {
+            const t = TaskManager.list.find(t => t.id === item.dataset.id);
+            if (t) ModalController.openEditTask(t);
+          }
+        });
+
+        document.getElementById('task-filter-bar').addEventListener('click', e => {
+          const btn = e.target.closest('.filter-btn');
+          if (!btn) return;
+          document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this._filter = btn.dataset.priority === 'all' ? null : btn.dataset.priority;
+          UIRenderer.renderTaskList(this._filter);
+        });
+
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Escape') ModalController.close();
+        });
+      },
+
+      async _save() {
+        const data = ModalController.collect();
+        if (!data) {
+          const box = document.getElementById('modal-box');
+          box.classList.remove('shake');
+          void box.offsetWidth;
+          box.classList.add('shake');
+          setTimeout(() => box.classList.remove('shake'), 400);
+          return;
+        }
+        const saveBtn = document.getElementById('btn-save');
+        saveBtn.disabled = true;
+        try {
+          if (ModalController.mode === 'appt') {
+            ModalController.editId
+              ? await AppointmentManager.update(ModalController.editId, data)
+              : await AppointmentManager.create(data);
+          } else {
+            ModalController.editId
+              ? await TaskManager.update(ModalController.editId, data)
+              : await TaskManager.create(data);
+          }
+          ModalController.close();
+          UIRenderer.renderAll();
+        } catch (err) {
+          _showError(err.message || 'Failed to save. Is the backend running?');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      },
+
+      async _delete() {
+        if (!ModalController.editId) return;
+        if (!confirm('Delete this item? This cannot be undone.')) return;
+        try {
+          if (ModalController.mode === 'appt') {
+            await AppointmentManager.delete(ModalController.editId);
+          } else {
+            await TaskManager.delete(ModalController.editId);
+          }
+          ModalController.close();
+          UIRenderer.renderAll();
+        } catch (err) {
+          _showError(err.message || 'Failed to delete. Is the backend running?');
+        }
+      },
+    };
+
+    // ── UTILITIES ──────────────────────────────────────────────────────────────
+    function _esc(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function _fmtTime(t) {
+      if (!t) return '';
+      const [h, m] = t.split(':').map(Number);
+      const period = h >= 12 ? 'PM' : 'AM';
+      const hour   = (h % 12) || 12;
+      return `${hour}:${String(m).padStart(2,'0')} ${period}`;
+    }
+
+    function _addMinutes(startTime, minutes) {
+      const [h, m] = startTime.split(':').map(Number);
+      const total  = h * 60 + m + Number(minutes);
+      return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
+    }
+
+    function _fmtDate(dateStr) {
+      if (!dateStr) return '';
+      const [y, mo, d] = dateStr.split('-').map(Number);
+      return new Date(y, mo - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // ── ERROR TOAST ────────────────────────────────────────────────────────────
+    function _showError(msg) {
+      const toast = document.getElementById('error-toast');
+      toast.textContent = msg;
+      toast.classList.add('visible');
+      setTimeout(() => toast.classList.remove('visible'), 3500);
+    }
+
+    // ── BOOTSTRAP ──────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', async () => {
+      CalendarState.init();
+      try {
+        await AppointmentManager.load();
+        await TaskManager.load();
+      } catch (err) {
+        _showError('Cannot connect to backend. Start the server with: mvn spring-boot:run');
+      }
+      UIRenderer.renderAll();
+      EventBus.init();
+
+      // Scroll to current hour (or HOURS_START if before grid)
+      const now = new Date();
+      const targetHour = Math.max(now.getHours() - 1, CONSTANTS.HOURS_START);
+      document.getElementById('grid-scroll-container').scrollTop =
+        (targetHour - CONSTANTS.HOURS_START) * CONSTANTS.SLOT_HEIGHT;
+
+      // Keep time line updated
+      setInterval(() => UIRenderer._updateTimeLine(), 60_000);
+    });
+  </script>
+</body>
+</html>
